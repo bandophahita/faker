@@ -28,12 +28,12 @@ Making Changes
 -  Check for unnecessary whitespace with ``git diff --check`` before
    committing.
 -  Make sure you have added the necessary tests for your changes.
+-  Run ``make lint`` in the repository directory and commit any changes it makes.
 -  Run *all* the tests to assure nothing else was accidentally broken:
 
    .. code:: bash
 
        $ tox
-
 
 Submitting Changes
 ------------------
