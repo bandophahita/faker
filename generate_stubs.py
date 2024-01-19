@@ -5,6 +5,9 @@ import re
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple
 
+import black
+import isort
+
 import faker.proxy
 
 from faker import Factory, Faker
@@ -180,12 +183,12 @@ def get_import_str(module: str, members: Optional[Set[str]]) -> str:
         return f"from {module} import {', '.join(members)}"
 
 
-imports_block = "\n".join([get_import_str(module, names) for module, names in imports.items()])
+imports_block = "\n".join([get_import_str(module, names) for module, names in imports.items()]).strip("\n")
 member_signatures_block = "    " + "\n    ".join(
     [sig.replace("\n", "\n    ") for sig in signatures_with_comments_as_str]
 )
 
-body = f"""
+output = f"""
 {imports_block}
 
 
@@ -193,7 +196,12 @@ class Faker:
 {member_signatures_block}
 """
 
+output = isort.code(output, config=isort.Config(".isort.cfg"))
+output = black.format_file_contents(
+    output, fast=False, mode=black.Mode(is_pyi=True, target_versions={black.TargetVersion.PY311}, line_length=120)
+)
+
 faker_proxy_path = pathlib.Path(inspect.getfile(faker.proxy))
 stub_file_path = faker_proxy_path.with_name("proxy.pyi").resolve()
 with open(stub_file_path, "w", encoding="utf-8") as fh:
-    fh.write(body)
+    fh.write(output)

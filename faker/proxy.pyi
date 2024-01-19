@@ -383,7 +383,7 @@ class Faker:
         data_columns: Tuple[str, str] = ...,
         num_rows: int = ...,
         include_row_ids: bool = ...,
-        **fmtparams: Any
+        **fmtparams: Any,
     ) -> str: ...
     def fixed_width(self, data_columns: Optional[list] = ..., num_rows: int = ..., align: str = ...) -> str: ...
     def image(
@@ -919,7 +919,7 @@ class Faker:
         generator: Optional[Generator] = ...,
         includes: Optional[List[str]] = ...,
         use_weighting: bool = ...,
-        **config: Any
+        **config: Any,
     ) -> None: ...
     def __setstate__(self, state: Any) -> None: ...
     def items(self) -> List[Tuple[str, Generator]]: ...
