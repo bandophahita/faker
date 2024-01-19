@@ -1,13 +1,14 @@
-from collections import defaultdict
 import inspect
 import pathlib
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple, DefaultDict
-from faker.config import AVAILABLE_LOCALES, PROVIDERS
-from faker import Factory, Faker
+
+from collections import defaultdict
+from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple
 
 import faker.proxy
 
+from faker import Factory, Faker
+from faker.config import AVAILABLE_LOCALES, PROVIDERS
 
 BUILTIN_MODULES_TO_IGNORE = ["builtins"]
 GENERIC_MANGLE_TYPES_TO_IGNORE = ["builtin_function_or_method", "mappingproxy"]
@@ -16,29 +17,24 @@ MODULES_TO_FULLY_QUALIFY = ["datetime"]
 imports: DefaultDict[str, Set[str]] = defaultdict(set)
 
 
-def get_module_and_member_to_import(cls: Any, locale: str | None = None) -> Tuple[
-    str, str]:
-    cls_name = getattr(cls, '__name__', getattr(cls, '_name', str(cls)))
+def get_module_and_member_to_import(cls: Any, locale: str | None = None) -> Tuple[str, str]:
+    cls_name = getattr(cls, "__name__", getattr(cls, "_name", str(cls)))
     module, member = cls.__module__, cls_name
     if cls_name is None:
-        qualified_type = re.findall(r'([a-zA-Z_0-9]+)\.([a-zA-Z_0-9]+)', str(cls))
+        qualified_type = re.findall(r"([a-zA-Z_0-9]+)\.([a-zA-Z_0-9]+)", str(cls))
         if len(qualified_type) > 0:
-            if imports[qualified_type[0][0]] is None \
-                or qualified_type[0][1] not in imports[qualified_type[0][0]]:
+            if imports[qualified_type[0][0]] is None or qualified_type[0][1] not in imports[qualified_type[0][0]]:
                 module, member = qualified_type[0]
         else:
-            unqualified_type = re.findall(
-                r'[^\.a-zA-Z0-9_]([A-Z][a-zA-Z0-9_]+)[^\.a-zA-Z0-9_]',
-                ' ' + str(cls) + ' ')
+            unqualified_type = re.findall(r"[^\.a-zA-Z0-9_]([A-Z][a-zA-Z0-9_]+)[^\.a-zA-Z0-9_]", " " + str(cls) + " ")
             if len(unqualified_type) > 0 and unqualified_type[0] != "NoneType":
-                cls_str = str(cls).replace('.en_US', '').replace("faker.", ".")
+                cls_str = str(cls).replace(".en_US", "").replace("faker.", ".")
                 if "<class '" in cls_str:
                     cls_str = cls_str.split("'")[1]
                 if locale is not None:
-                    cls_str = cls_str.replace('.' + locale, '')
+                    cls_str = cls_str.replace("." + locale, "")
 
-                if imports[cls_str] is None or unqualified_type[0] not in imports[
-                    cls_str]:
+                if imports[cls_str] is None or unqualified_type[0] not in imports[cls_str]:
                     module, member = cls_str, unqualified_type[0]
     if module in MODULES_TO_FULLY_QUALIFY:
         member = None
@@ -64,14 +60,15 @@ class UniqueMemberFunctionsAndVariables:
         seen_vars = seen_vars.union(self.vars.keys())
 
 
-def get_member_functions_and_variables(cls: Any, include_mangled: bool = False) \
-    -> UniqueMemberFunctionsAndVariables:
-    members = [(name, value) for (name, value) in inspect.getmembers_static(cls)
-               if ((include_mangled and name.startswith("__")) or not name.startswith(
-            "_"))]
+def get_member_functions_and_variables(cls: Any, include_mangled: bool = False) -> UniqueMemberFunctionsAndVariables:
+    members = [
+        (name, value)
+        for (name, value) in inspect.getmembers_static(cls)
+        if ((include_mangled and name.startswith("__")) or not name.startswith("_"))
+    ]
     funcs: Dict[str, Any] = {}
     vars: Dict[str, Any] = {}
-    for (name, value) in members:
+    for name, value in members:
         attr = getattr(cls, name, None)
         if attr is not None and (inspect.isfunction(attr) or inspect.ismethod(attr)):
             funcs[name] = value
@@ -79,8 +76,7 @@ def get_member_functions_and_variables(cls: Any, include_mangled: bool = False) 
             # I haven't implemented logic
             # for generating descriptor signatures yet
             continue
-        elif not include_mangled or type(
-            value).__name__ not in GENERIC_MANGLE_TYPES_TO_IGNORE:
+        elif not include_mangled or type(value).__name__ not in GENERIC_MANGLE_TYPES_TO_IGNORE:
             vars[name] = value
 
     return UniqueMemberFunctionsAndVariables(cls, funcs, vars)
@@ -94,10 +90,9 @@ for locale in AVAILABLE_LOCALES:
         prov_cls, _, _ = Factory._find_provider_class(provider, locale)
         classes_and_locales_to_use_for_stub.append((prov_cls, locale))
 
-all_members: List[Tuple[UniqueMemberFunctionsAndVariables, str | None]] = \
-    [(get_member_functions_and_variables(cls), locale) for cls, locale in
-     classes_and_locales_to_use_for_stub] \
-    + [(get_member_functions_and_variables(Faker, include_mangled=True), None)]
+all_members: List[Tuple[UniqueMemberFunctionsAndVariables, str | None]] = [
+    (get_member_functions_and_variables(cls), locale) for cls, locale in classes_and_locales_to_use_for_stub
+] + [(get_member_functions_and_variables(Faker, include_mangled=True), None)]
 
 # Use the accumulated seen_funcs and seen_vars to remove all variables that have the same name as a function somewhere
 overlapping_var_names = seen_vars.intersection(seen_funcs)
@@ -112,10 +107,12 @@ signatures_with_comments: List[Tuple[str, Optional[str], bool]] = []
 
 
 def recurse_annotation(annotation: Any, loc: str | None) -> None:
-    if (annotation is not inspect.Parameter.empty
+    if (
+        annotation is not inspect.Parameter.empty
         and annotation is not inspect.Signature.empty
         and hasattr(annotation, "__module__")
-        and not annotation.__module__ in BUILTIN_MODULES_TO_IGNORE):
+        and not annotation.__module__ in BUILTIN_MODULES_TO_IGNORE
+    ):
         if hasattr(annotation, "__args__"):
             for ann in annotation.__args__:
                 recurse_annotation(ann, loc)
@@ -152,8 +149,7 @@ for mbr_funcs_and_vars, loc in all_members:
             new_parms.append(new_parm)
 
         sig = sig.replace(parameters=new_parms)
-        sig_str = str(sig).replace("Ellipsis", "...").replace("NoneType",
-                                                              "None").replace("~", "")
+        sig_str = str(sig).replace("Ellipsis", "...").replace("NoneType", "None").replace("~", "")
         for module in imports.keys():
             if module in MODULES_TO_FULLY_QUALIFY:
                 continue
@@ -171,8 +167,8 @@ for sigstr, comment, is_preceding_comment in signatures_with_comments:
     elif comment is not None:
         sig_without_final_ellipsis = sigstr.strip(" .")
         signatures_with_comments_as_str.append(
-            sig_without_final_ellipsis + "\n    \"\"\"\n    "
-            + comment.replace("\n", "\n    ") + "\n    \"\"\"\n    ...")
+            sig_without_final_ellipsis + '\n    """\n    ' + comment.replace("\n", "\n    ") + '\n    """\n    ...'
+        )
     else:
         signatures_with_comments_as_str.append(sigstr)
 
@@ -184,13 +180,12 @@ def get_import_str(module: str, members: Optional[Set[str]]) -> str:
         return f"from {module} import {', '.join(members)}"
 
 
-imports_block = "\n".join(
-    [get_import_str(module, names) for module, names in imports.items()])
+imports_block = "\n".join([get_import_str(module, names) for module, names in imports.items()])
 member_signatures_block = "    " + "\n    ".join(
-    [sig.replace("\n", "\n    ") for sig in signatures_with_comments_as_str])
+    [sig.replace("\n", "\n    ") for sig in signatures_with_comments_as_str]
+)
 
-body = \
-    f"""
+body = f"""
 {imports_block}
 
 
