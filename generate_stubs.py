@@ -10,10 +10,11 @@ import isort
 
 import faker.proxy
 
-from faker import Factory, Faker, Generator
+from faker import Factory
+from faker.proxy import Faker
+from faker.generator import Generator
 from faker.config import AVAILABLE_LOCALES, PROVIDERS
-from faker.providers import BaseProvider
-from faker.typing import SeedType
+from faker.providers import BaseProvider  # noqa: F401
 
 BUILTIN_MODULES_TO_IGNORE = ["builtins"]
 GENERIC_MANGLE_TYPES_TO_IGNORE = ["builtin_function_or_method", "mappingproxy"]
@@ -96,8 +97,6 @@ for locale in AVAILABLE_LOCALES:
         classes_and_locales_to_use_for_stub.append((prov_cls, locale))
 
 all_members: List[Tuple[UniqueMemberFunctionsAndVariables, str | None]]
-# all_members = []
-# [all_members.append((get_member_functions_and_variables(cls), locale)) for cls, locale in classes_and_locales_to_use_for_stub]
 all_members = [(get_member_functions_and_variables(cls), locale) for cls, locale in classes_and_locales_to_use_for_stub]
 all_members.append((get_member_functions_and_variables(Faker, include_mangled=True), None))
 all_members.append((get_member_functions_and_variables(Generator, include_mangled=True), None))
@@ -146,14 +145,15 @@ for mbr_funcs_and_vars, loc in all_members:
             func_value = func_value.__func__
             deco = "@staticmethod\n"
 
-        # this function works on forward refs as long as they are imported in THIS module
+        # works on forward refs as long as they are imported in THIS module!!
+        # you'll know if a module is missing when an exception like the following occurs 
+        # NameError: name 'BaseProvider' is not defined
         hints = get_type_hints(func_value, localns=locals(), include_extras=True)
 
-        sig = inspect.signature(func_value)
+        sig = inspect.signature(func_value, locals=locals(), eval_str=True)
 
         return_annotation = hints.pop("return") if "return" in hints else sig.return_annotation
         recurse_annotation(return_annotation, loc)
-        # sig = sig.replace(return_annotation=return_annotation)
 
         new_parms = []
         for key, parm_val in sig.parameters.items():
@@ -168,7 +168,12 @@ for mbr_funcs_and_vars, loc in all_members:
         sig = sig.replace(parameters=new_parms)
         sig_str = str(sig)
         sig_str = re.sub(r"ForwardRef\('([^']*)'\)", r"\1", sig_str)
-        sig_str = sig_str.replace("Ellipsis", "...").replace("NoneType", "None").replace("~", "")
+        sig_str = (
+            sig_str.replace("Ellipsis", "...")
+            .replace("NoneType", "None")
+            .replace("~", "")
+            .replace("faker.proxy.Faker", "Faker")
+        )
         for module in imports.keys():
             if module in MODULES_TO_FULLY_QUALIFY:
                 continue
