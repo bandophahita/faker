@@ -3,15 +3,17 @@ import pathlib
 import re
 
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple
+from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple, get_type_hints
 
 import black
 import isort
 
 import faker.proxy
 
-from faker import Factory, Faker
+from faker import Factory, Faker, Generator
 from faker.config import AVAILABLE_LOCALES, PROVIDERS
+from faker.providers import BaseProvider
+from faker.typing import SeedType
 
 BUILTIN_MODULES_TO_IGNORE = ["builtins"]
 GENERIC_MANGLE_TYPES_TO_IGNORE = ["builtin_function_or_method", "mappingproxy"]
@@ -93,9 +95,12 @@ for locale in AVAILABLE_LOCALES:
         prov_cls, _, _ = Factory._find_provider_class(provider, locale)
         classes_and_locales_to_use_for_stub.append((prov_cls, locale))
 
-all_members: List[Tuple[UniqueMemberFunctionsAndVariables, str | None]] = [
-    (get_member_functions_and_variables(cls), locale) for cls, locale in classes_and_locales_to_use_for_stub
-] + [(get_member_functions_and_variables(Faker, include_mangled=True), None)]
+all_members: List[Tuple[UniqueMemberFunctionsAndVariables, str | None]]
+# all_members = []
+# [all_members.append((get_member_functions_and_variables(cls), locale)) for cls, locale in classes_and_locales_to_use_for_stub]
+all_members = [(get_member_functions_and_variables(cls), locale) for cls, locale in classes_and_locales_to_use_for_stub]
+all_members.append((get_member_functions_and_variables(Faker, include_mangled=True), None))
+all_members.append((get_member_functions_and_variables(Generator, include_mangled=True), None))
 
 # Use the accumulated seen_funcs and seen_vars to remove all variables that have the same name as a function somewhere
 overlapping_var_names = seen_vars.intersection(seen_funcs)
@@ -110,6 +115,7 @@ signatures_with_comments: List[Tuple[str, Optional[str], bool]] = []
 
 
 def recurse_annotation(annotation: Any, loc: str | None) -> None:
+    """determine import modules"""
     if (
         annotation is not inspect.Parameter.empty
         and annotation is not inspect.Signature.empty
@@ -122,7 +128,7 @@ def recurse_annotation(annotation: Any, loc: str | None) -> None:
 
         module, member = get_module_and_member_to_import(annotation, loc)
 
-        if module is not None:
+        if module is not None and not (module == "faker.proxy" and member == "Faker"):
             if imports[module] is None:
                 imports[module] = set() if member is None else {member}
             elif member is not None:
@@ -140,24 +146,35 @@ for mbr_funcs_and_vars, loc in all_members:
             func_value = func_value.__func__
             deco = "@staticmethod\n"
 
+        # this function works on forward refs as long as they are imported in THIS module
+        hints = get_type_hints(func_value, localns=locals(), include_extras=True)
+
         sig = inspect.signature(func_value)
-        recurse_annotation(sig.return_annotation, loc)
+
+        return_annotation = hints.pop("return") if "return" in hints else sig.return_annotation
+        recurse_annotation(return_annotation, loc)
+        # sig = sig.replace(return_annotation=return_annotation)
 
         new_parms = []
         for key, parm_val in sig.parameters.items():
             new_parm = parm_val
+
+            parm_annotation = hints[key] if key in hints else new_parm.annotation
             if parm_val.default is not inspect.Parameter.empty:
                 new_parm = parm_val.replace(default=...)
-            recurse_annotation(new_parm.annotation, loc)
+            recurse_annotation(parm_annotation, loc)
             new_parms.append(new_parm)
 
         sig = sig.replace(parameters=new_parms)
-        sig_str = str(sig).replace("Ellipsis", "...").replace("NoneType", "None").replace("~", "")
+        sig_str = str(sig)
+        sig_str = re.sub(r"ForwardRef\('([^']*)'\)", r"\1", sig_str)
+        sig_str = sig_str.replace("Ellipsis", "...").replace("NoneType", "None").replace("~", "")
         for module in imports.keys():
             if module in MODULES_TO_FULLY_QUALIFY:
                 continue
             sig_str = sig_str.replace(f"{module}.", "")
 
+        # uncomment if you want docstrings in the pyi
         # comment = inspect.getdoc(func_value) or None
         comment = None
         rt = (f"{deco}def {func_name}{sig_str}: ...", comment, False)
